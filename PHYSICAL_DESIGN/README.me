@@ -1,1 +1,213 @@
+### Physical Design Floorplanning & Macro Placement
+
+The physical design flow begins with floorplanning using **OpenROAD**. The floorplan establishes the core area, power grid layers, and macro placement for the mixed-signal SoC (`vsdbabysoc`)[cite: 12].
+
+#### Key Details (`gui_floorplan.png`)[cite: 12]
+* **Tool Interface:** OpenROAD GUI showing layer configurations and routing metals (`li1`, `mcon`, `met1` through `met5`)[cite: 12].
+* **Macro Placement:** The **`dac`** analog macro block is explicitly placed near the bottom-left of the die area[cite: 12].
+* **Die Scale:** Visualized with a scale reference of `200 µm`[cite: 12].
+#### Floorplan GUI Snapshot
+![OpenROAD Floorplan GUI View](./screenshots/gui_floorplan.png)
+
+
+### Physical Design: Placement & Cell Distribution
+
+Following floorplanning, the placement stage positions standard cells relative to pre-placed macros within the core boundary using **OpenROAD**[cite: 13].
+
+#### Key Details (`gui_place.png`)[cite: 13]
+* **Flow Stage:** Stage `3_place` (`vsdbabysoc`)[cite: 13].
+* **Placement Visualization:** Displays standard cell clusters positioned above the pre-placed `dac` macro[cite: 13].
+* **Display Controls:** Utilizes heat map overlays (such as placement density and routing metrics) to monitor congestion and cell distribution across the `200 µm` scale die[cite: 13].
+
+#### Placement GUI Snapshot
+![OpenROAD Placement GUI View](./screenshots/gui_place.png)
+
+
+### Physical Design: Clock Tree Synthesis (CTS)
+
+Following placement, Clock Tree Synthesis (CTS) is performed to distribute the clock signal efficiently with minimal skew across all sequential elements in the design using **OpenROAD**[cite: 14].
+
+#### Key Details (`gui_cts.png`)[cite: 14]
+* **Flow Stage:** Stage `4_cts` (`vsdbabysoc`)[cite: 14].
+* **Clock Distribution:** Synthesizes buffers and clock trees to balance latency to all flip-flops residing above the `dac` macro[cite: 14].
+* **Layer Control:** Displays active routing layers (`li1`, `mcon`, `met1` through `met5`) and display controls configured for the layout view[cite: 14].
+
+#### CTS GUI Snapshot
+![OpenROAD CTS GUI View](./screenshots/gui_cts.png)
+
+
+### Physical Design: Routing & Parasitics Estimation
+
+Following clock tree synthesis, full routing is performed using **OpenROAD** to interconnect all standard cells and analog blocks across the metal layers[cite: 15].
+
+#### Key Details (`vsdbbaysoc_routing.png`)[cite: 15]
+* **Flow Stage:** Stage `5_route` (`vsdbabysoc`)[cite: 15].
+* **Parasitics & Timing Extraction:** 
+  * Executes `estimate_parasitics -global_routing` to extract interconnect parasitics[cite: 15].
+  * Runs `sta::find_timing` and `sta::find_requireds` alongside `gui::update_timing_report` to evaluate endpoint slack post-routing[cite: 15].
+* **Layout Scale:** Visualized at a `20 µm` scale showing dense multi-metal interconnect routing patterns across the design core[cite: 15].
+
+#### Routing GUI Snapshot
+![OpenROAD Routing and Parasitics Estimation GUI View](./screenshots/vsdbbaysoc_routing.png)
+
+
+### Post-Route Static Timing Analysis & Slack Summary
+
+Following full routing and parasitics extraction, post-route static timing analysis is parsed using a grep command on the `post_route_sta.log` file to evaluate setup slack, hold slack, WNS (Worst Negative Slack), and TNS (Total Negative Slack)[cite: 16].
+
+#### Key Timing Metrics (`slack_time.png`)[cite: 16]
+* **Worst Setup Slack / WNS (Max):** `-1.762 ns` (Indicates a minor setup violation post-routing that requires optimization or constraint tuning)[cite: 16].
+* **Worst Hold Slack (Min):** `+0.479 ns` (Positive hold slack indicates hold timing is successfully met)[cite: 16].
+* **Total Negative Slack (TNS):** `-69.502` across failing endpoints[cite: 16].
+
+#### Post-Route Slack Log Snapshot
+![Post-Route Slack and Timing Report Log](./screenshots/slack_time.png)
+
+
+### Critical Path Setup Timing Analysis (`core_clock`)
+
+This section breaks down the detailed setup timing path report for maximum-delay paths clocked by the `core_clock` domain within the design[cite: 17].
+
+#### Key Path Metrics (`Setup_time_core_clk.png`)[cite: 17]
+* **Startpoint:** `dpath.b_reg.out[0]` (rising edge-triggered flip-flop clocked by `core_clock`)[cite: 17].
+* **Endpoint:** `dpath.a_reg.out[9]` (rising edge-triggered flip-flop clocked by `core_clock`)[cite: 17].
+* **Path Type:** Max delay (Setup Timing)[cite: 17].
+* **Timing Breakdown:**
+  * **Data Arrival Time:** `2.55 ns` (propagating through combinational logic including XOR, MAJ3, AOI, and buffer cells)[cite: 17].
+  * **Data Required Time:** `1.10 ns` (accounting for clock arrival, latency, and library setup time of `-0.24 ns`)[cite: 17].
+  * **Slack:** `-1.45 ns` (`slack (VIOLATED)`), indicating a setup timing violation along this datapath that requires logic optimization or clock frequency adjustments[cite: 17].
+
+#### Setup Timing Path Snapshot
+![Core Clock Setup Timing Path Report](./screenshots/Setup_time_core_clk.png)
+
+
+
+
+### Virtual Clock Domain Setup Timing Path Analysis (`vclk_core_clock`)
+
+This section details the maximum-delay setup timing path report for paths transitioning from internal sequential elements to output ports governed by the virtual clock domain (`vclk_core_clock`)[cite: 18].
+
+#### Key Path Metrics (`setup_time_vclk.png`)[cite: 18]
+* **Startpoint:** `dpath.b_reg.out[0]` (rising edge-triggered flip-flop clocked by `core_clock`)[cite: 18].
+* **Endpoint:** `resp_msg[3]` (output port clocked by `vclk_core_clock`)[cite: 18].
+* **Path Group:** `vclk_core_clock`[cite: 18].
+* **Path Type:** Max delay (Setup Timing)[cite: 18].
+* **Timing Breakdown:**
+  * **Data Arrival Time:** `2.64 ns` (propagating through clock buffers, datapath register output, combinational logic cells like `xor2_2`, `maj3_2`, `buf_4`, `buf_6`, and delay gate cells to the output port)[cite: 18].
+  * **Data Required Time:** `0.88 ns` (derived from virtual clock rise edge, ideal network delay, and an output external delay of `-0.22 ns` resulting in `0.88 ns`)[cite: 18].
+  * **Slack:** `-1.76 ns` (`slack (VIOLATED)`), indicating a setup timing violation at the output port boundary[cite: 18].
+
+#### Virtual Clock Setup Timing Path Snapshot
+![Virtual Clock Setup Timing Path Report](./screenshots/setup_time_vclk.png)
+
+
+
+### Critical Path Hold Timing Analysis (`core_clock`)
+
+This section details the minimum-delay hold timing path report for paths clocked by the `core_clock` domain within the design[cite: 19].
+
+#### Key Path Metrics (`hold_time_core_clk.png`)[cite: 19]
+* **Startpoint:** `ctrl.state.out[1]` (rising edge-triggered flip-flop clocked by `core_clock`)[cite: 19].
+* **Endpoint:** `ctrl.state.out[1]` (rising edge-triggered flip-flop clocked by `core_clock`)[cite: 19].
+* **Path Group:** `core_clock`[cite: 19].
+* **Path Type:** Min delay (Hold Timing)[cite: 19].
+* **Timing Breakdown:**
+  * **Data Arrival Time:** `0.68 ns` (propagating through clock buffers, state register output, combinational logic cells like `o311ai_0` and `nand2_1`)[cite: 19].
+  * **Data Required Time:** `0.20 ns` (derived from clock source latency, clock network delay, and a library hold time of `-0.04 ns` resulting in `0.20 ns`)[cite: 19].
+  * **Slack:** `+0.48 ns` (`slack (MET)`), indicating that hold timing is successfully satisfied across internal state registers[cite: 19].
+
+#### Hold Timing Path Snapshot
+![Core Clock Hold Timing Path Report](./screenshots/hold_time_core_clk.png)
+
+
+### Virtual Clock Domain Hold Timing Path Analysis (`vclk_core_clock`)
+
+This section details the minimum-delay hold timing path report for paths transitioning from internal registers to output ports governed by the virtual clock domain (`vclk_core_clock`)[cite: 20].
+
+#### Key Path Metrics (`hold_time_vclk_core.png`)[cite: 20]
+* **Startpoint:** `ctrl.state.out[1]` (rising edge-triggered flip-flop clocked by `core_clock`)[cite: 20].
+* **Endpoint:** `resp_val` (output port clocked by `vclk_core_clock`)[cite: 20].
+* **Path Group:** `vclk_core_clock`[cite: 20].
+* **Path Type:** Min delay (Hold Timing)[cite: 20].
+* **Timing Breakdown:**
+  * **Data Arrival Time:** `0.84 ns` (propagating through clock buffers, state register output, and combinational/buffer logic cells like `clkinv_1`, `nor2_4`, and `buf_6` to the output port)[cite: 20].
+  * **Data Required Time:** `-0.22 ns` (derived from virtual clock rise edge, ideal network delay, and an output external delay of `-0.22 ns`)[cite: 20].
+  * **Slack:** `+1.06 ns` (`slack (MET)`), indicating that hold timing is successfully satisfied at the output boundary[cite: 20].
+
+#### Virtual Clock Hold Timing Path Snapshot
+![Virtual Clock Hold Timing Path Report](./screenshots/hold_time_vclk_core.png)
+
+
+### Post-Route Power, Area & Clock Skew Analysis
+
+This section summarizes the final post-route power estimation, clock skew metrics, and design area utilization for `vsdbabysoc`[cite: 21].
+
+#### Key Metrics (`power_remaining_details.png`)[cite: 21]
+* **Clock Skew (`core_clock`)[cite: 21]:**
+  * Source latency: `0.24`[cite: 21]
+  * Target latency: `-0.24`[cite: 21]
+  * Setup Skew: `0.00 ns`[cite: 21]
+* **Power Breakdown (Total: `7.34e-03 W`)[cite: 21]:**
+  * **Combinational Logic:** `4.87e-03 W` (`66.4%`)[cite: 21]
+  * **Sequential Elements:** `1.75e-03 W` (`23.9%`)[cite: 21]
+  * **Clock Network:** `7.15e-04 W` (`9.8%`)[cite: 21]
+  * *Power distribution:* Internal power accounts for `76.1%`, switching power accounts for `23.9%`, and leakage power is negligible (`0.0%`)[cite: 21].
+* **Design Area & Utilization[cite: 21]:**
+  * Total Design Area: `5029 µm^2`[cite: 21]
+  * Core Utilization: `84%`[cite: 21]
+
+#### Power and Area Report Snapshot
+![Post-Route Power and Area Report Log](./screenshots/power_remaining_details.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
